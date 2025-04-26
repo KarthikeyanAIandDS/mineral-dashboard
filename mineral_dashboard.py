@@ -9,6 +9,43 @@ from streamlit_folium import folium_static
 import matplotlib.patches as mpatches
 import matplotlib.colors as mcolors
 import random
+# File path helper function
+def get_file_path(relative_path):
+    """Get absolute file path from relative path."""
+    import os
+    # Get the directory of the current script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # Join with the relative path
+    return os.path.join(script_dir, relative_path)
+
+# Add informative message about file paths
+st.set_page_config(
+    page_title="Mineral Targeting Dashboard",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+def load_data():
+    try:
+        # Use the helper function to get file paths
+        # Replace these paths with your actual file paths
+        geomorph_path = get_file_path("datasets/multi_layer_geological_map_of_karnataka_and_andhra_pradesh_25k_scale_v1/25K/lithology_25k_ngdr_20250224140917945/lithology_25k_ngdr.shp")
+        mineral_path = get_file_path("datasets/multi_layer_geological_map_of_karnataka_and_andhra_pradesh_25k_scale_v1/25K/mineralization_25k_ngdr_20250224141143411/mineralization_25k_ngdr_20250224141143411.shp")
+        
+        # Show file paths to help with debugging
+        st.write(f"Loading geomorphology from: {geomorph_path}")
+        st.write(f"Loading minerals from: {mineral_path}")
+        
+        # Read the files
+        geomorph_gdf = gpd.read_file(geomorph_path)
+        mineral_gdf = gpd.read_file(mineral_path)
+        
+        # Continue with your existing code...
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        st.write("Please check if these files exist in your repository:")
+        st.code(geomorph_path)
+        st.code(mineral_path)
+        return None, None
 
 # Set page configuration
 st.set_page_config(
