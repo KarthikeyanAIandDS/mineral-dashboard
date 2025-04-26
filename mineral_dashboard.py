@@ -52,7 +52,7 @@ st.markdown("""
 
 st.title("Mineral Targeting Dashboard")
 
-# Load data function with improved file path handling
+# Load data function with improved file path handling and column checking
 def load_data():
     try:
         # Use helper function to get correct file paths
@@ -69,6 +69,54 @@ def load_data():
         # Read the files
         geomorph_gdf = gpd.read_file(geomorph_path)
         mineral_gdf = gpd.read_file(mineral_path)
+        
+        # Display column names for debugging
+        with st.expander("Column Information"):
+            st.write("Geomorphology columns:", geomorph_gdf.columns.tolist())
+            st.write("Mineral columns:", mineral_gdf.columns.tolist())
+        
+        # Find appropriate column names
+        # First determine which column to use for region labels - check common options
+        region_column = None
+        region_column_options = ['legend_sho', 'name', 'lith_class', 'type', 'unit', 'rock_type', 'description', 'lithology', 'formation']
+        for col in region_column_options:
+            if col in geomorph_gdf.columns:
+                region_column = col
+                break
+        
+        if region_column is None:
+            # If none of the expected columns found, use the first string-type column
+            for col in geomorph_gdf.columns:
+                if geomorph_gdf[col].dtype == 'object':
+                    region_column = col
+                    break
+            
+            if region_column is None:
+                st.error("Could not find a suitable column for region names")
+                return None, None
+        
+        # Determine which column to use for mineral types
+        mineral_column = None
+        mineral_column_options = ['commodity', 'mineral', 'type', 'name', 'description']
+        for col in mineral_column_options:
+            if col in mineral_gdf.columns:
+                mineral_column = col
+                break
+        
+        if mineral_column is None:
+            # If none of the expected columns found, use the first string-type column
+            for col in mineral_gdf.columns:
+                if mineral_gdf[col].dtype == 'object':
+                    mineral_column = col
+                    break
+            
+            if mineral_column is None:
+                st.error("Could not find a suitable column for mineral types")
+                return None, None
+        
+        # Store the column names in the geodataframes for later use
+        geomorph_gdf.attrs['region_column'] = region_column
+        mineral_gdf.attrs['mineral_column'] = mineral_column
         
         # Make sure both are in WGS84
         if geomorph_gdf.crs != "EPSG:4326":
@@ -89,7 +137,7 @@ def load_data():
         
         # Spatial join to calculate mineral counts
         joined = gpd.sjoin(geomorph_utm, mineral_utm, how="left", predicate="intersects")
-        mineral_counts = joined.groupby(joined.index)['commodity'].count()
+        mineral_counts = joined.groupby(joined.index)[mineral_column].count()
         geomorph_gdf['mineral_count'] = mineral_counts
         geomorph_gdf['mineral_count'] = geomorph_gdf['mineral_count'].fillna(0).astype(int)
         
@@ -105,41 +153,47 @@ def load_data():
             geomorph_gdf['accuracy'] = 0
         
         # Calculate counts for each mineral type
-        for commodity in mineral_gdf['commodity'].unique():
+        for commodity in mineral_gdf[mineral_column].unique():
             if pd.notnull(commodity):
-                col_name = f"count_{commodity.replace(' ', '_').replace(',', '_').replace('-', '_')}"
+                col_name = f"count_{str(commodity).replace(' ', '_').replace(',', '_').replace('-', '_')}"
                 # Filter for this commodity
-                this_mineral = mineral_utm[mineral_utm['commodity'] == commodity]
+                this_mineral = mineral_utm[mineral_utm[mineral_column] == commodity]
                 if not this_mineral.empty:
                     # Join with geomorphology
                     joined_specific = gpd.sjoin(geomorph_utm, this_mineral, how="left", predicate="intersects")
                     # Count occurrences
-                    counts = joined_specific.groupby(joined_specific.index)['commodity'].count()
+                    counts = joined_specific.groupby(joined_specific.index)[mineral_column].count()
                     # Create column name based on commodity
                     geomorph_gdf[col_name] = counts
                     geomorph_gdf[col_name] = geomorph_gdf[col_name].fillna(0).astype(int)
         
+        st.success(f"Data loaded successfully! Found {len(geomorph_gdf)} regions and {len(mineral_gdf)} mineral locations")
         return geomorph_gdf, mineral_gdf
     except Exception as e:
         st.error(f"Error loading data: {e}")
-        if "fiona" in str(e) and "path" in str(e):
-            st.error("Fiona path error: Make sure you have all required packages installed.")
-            st.code("pip install geopandas fiona pyproj shapely rtree")
+        st.error("Please check the file paths and column names in your shapefiles.")
         return None, None
 
 # Load the data only once - use session state
 if 'data_loaded' not in st.session_state:
     with st.spinner('Loading geospatial data...'):
         geomorph_gdf, mineral_gdf = load_data()
-        st.session_state.data_loaded = True
-        st.session_state.geomorph_gdf = geomorph_gdf
-        st.session_state.mineral_gdf = mineral_gdf
+        if geomorph_gdf is not None and mineral_gdf is not None:
+            st.session_state.data_loaded = True
+            st.session_state.geomorph_gdf = geomorph_gdf
+            st.session_state.mineral_gdf = mineral_gdf
+            st.session_state.region_column = geomorph_gdf.attrs.get('region_column', 'legend_sho')
+            st.session_state.mineral_column = mineral_gdf.attrs.get('mineral_column', 'commodity')
 else:
     geomorph_gdf = st.session_state.geomorph_gdf
     mineral_gdf = st.session_state.mineral_gdf
+    region_column = st.session_state.region_column
+    mineral_column = st.session_state.mineral_column
 
 if geomorph_gdf is None or mineral_gdf is None:
-    st.warning("Please provide the correct path to the shapefile data.")
+    st.warning("Could not load data. Please check file paths and shapefile structure.")
+    st.write("Try these files:")
+    st.code("ls -la datasets/*/", language="bash")
     st.stop()
 
 # Generate bright, distinguishable colors for geomorphology types
@@ -162,6 +216,10 @@ def generate_bright_colors(n):
         
     return colors
 
+# Get column names from session state
+region_column = st.session_state.region_column
+mineral_column = st.session_state.mineral_column
+
 # Define vibrant colors for minerals and regions
 commodity_colors = {
     'Gold': '#FFD700',
@@ -182,13 +240,13 @@ commodity_colors = {
 }
 
 # Generate random colors for geomorphology types
-geomorph_types = sorted([g for g in geomorph_gdf['legend_sho'].dropna().unique() 
+geomorph_types = sorted([g for g in geomorph_gdf[region_column].dropna().unique() 
                          if isinstance(g, str)])
 bright_colors = generate_bright_colors(len(geomorph_types))
 geomorph_colors = {geomorph_types[i]: bright_colors[i] for i in range(len(geomorph_types))}
 
 # Get unique mineral types
-commodities = sorted([c for c in mineral_gdf['commodity'].dropna().unique() 
+commodities = sorted([c for c in mineral_gdf[mineral_column].dropna().unique() 
                       if isinstance(c, str)])
 
 # Control panel
@@ -226,8 +284,8 @@ else:
 # Filter data based on selection
 if both_selected:
     # Get relevant data
-    geom_plot = geomorph_gdf[geomorph_gdf['legend_sho'] == selected_geomorph]
-    min_plot = mineral_gdf[mineral_gdf['commodity'] == selected_mineral]
+    geom_plot = geomorph_gdf[geomorph_gdf[region_column] == selected_geomorph]
+    min_plot = mineral_gdf[mineral_gdf[mineral_column] == selected_mineral]
     
     # Get count of selected mineral in selected region
     col_name = f"count_{selected_mineral.replace(' ', '_').replace(',', '_').replace('-', '_')}"
@@ -251,11 +309,11 @@ if both_selected:
     with col3:
         st.metric("Presence", f"{mineral_percentage:.1f}%")
 elif only_geomorph:
-    geom_plot = geomorph_gdf[geomorph_gdf['legend_sho'] == selected_geomorph]
+    geom_plot = geomorph_gdf[geomorph_gdf[region_column] == selected_geomorph]
     min_plot = pd.DataFrame()  # Empty DataFrame
 elif only_mineral:
     geom_plot = pd.DataFrame()  # Empty DataFrame
-    min_plot = mineral_gdf[mineral_gdf['commodity'] == selected_mineral]
+    min_plot = mineral_gdf[mineral_gdf[mineral_column] == selected_mineral]
 else:
     geom_plot = pd.DataFrame()  # Empty DataFrame
     min_plot = pd.DataFrame()  # Empty DataFrame
@@ -273,7 +331,7 @@ with map_col:
         
         # Plot all geomorphology regions with random colors
         geomorph_gdf.plot(
-            column='legend_sho',
+            column=region_column,
             ax=ax,
             categorical=True,
             cmap='viridis',
@@ -284,7 +342,7 @@ with map_col:
         
         # Create legend for a sample of regions to avoid overcrowding
         # Use a selection of the most prevalent regions
-        top_regions = geomorph_gdf['legend_sho'].value_counts().head(10).index
+        top_regions = geomorph_gdf[region_column].value_counts().head(10).index
         handles = []
         for region in top_regions:
             if isinstance(region, str):
