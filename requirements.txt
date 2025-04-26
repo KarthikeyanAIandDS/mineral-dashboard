@@ -4,3 +4,5 @@ matplotlib==3.8.2
 pandas==2.1.4
 numpy==1.26.2
 shapely==2.0.2
+folium==0.14.0
+streamlit-folium==0.15.0
