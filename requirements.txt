@@ -6,3 +6,7 @@ numpy==1.26.2
 shapely==2.0.2
 folium==0.14.0
 streamlit-folium==0.15.0
+fiona==1.9.5
+pyproj==3.6.1
+rtree==1.1.0
+branca==0.6.0

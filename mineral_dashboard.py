@@ -9,50 +9,22 @@ from streamlit_folium import folium_static
 import matplotlib.patches as mpatches
 import matplotlib.colors as mcolors
 import random
+import os
+
+# Set page configuration must be the FIRST Streamlit command
+st.set_page_config(
+    page_title="Mineral Targeting Dashboard",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
 # File path helper function
 def get_file_path(relative_path):
     """Get absolute file path from relative path."""
-    import os
     # Get the directory of the current script
     script_dir = os.path.dirname(os.path.abspath(__file__))
     # Join with the relative path
     return os.path.join(script_dir, relative_path)
-
-# Add informative message about file paths
-st.set_page_config(
-    page_title="Mineral Targeting Dashboard",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
-def load_data():
-    try:
-        # Use the helper function to get file paths
-        # Replace these paths with your actual file paths
-        geomorph_path = get_file_path("datasets/multi_layer_geological_map_of_karnataka_and_andhra_pradesh_25k_scale_v1/25K/lithology_25k_ngdr_20250224140917945/lithology_25k_ngdr.shp")
-        mineral_path = get_file_path("datasets/multi_layer_geological_map_of_karnataka_and_andhra_pradesh_25k_scale_v1/25K/mineralization_25k_ngdr_20250224141143411/mineralization_25k_ngdr_20250224141143411.shp")
-        
-        # Show file paths to help with debugging
-        st.write(f"Loading geomorphology from: {geomorph_path}")
-        st.write(f"Loading minerals from: {mineral_path}")
-        
-        # Read the files
-        geomorph_gdf = gpd.read_file(geomorph_path)
-        mineral_gdf = gpd.read_file(mineral_path)
-        
-        # Continue with your existing code...
-    except Exception as e:
-        st.error(f"Error loading data: {e}")
-        st.write("Please check if these files exist in your repository:")
-        st.code(geomorph_path)
-        st.code(mineral_path)
-        return None, None
-
-# Set page configuration
-st.set_page_config(
-    page_title="Mineral Targeting Dashboard",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
 
 # Custom CSS with black text for the info-box
 st.markdown("""
@@ -80,13 +52,20 @@ st.markdown("""
 
 st.title("Mineral Targeting Dashboard")
 
-# Load data
+# Load data function with improved file path handling
 def load_data():
-    # Replace with your actual file paths
-    geomorph_path = "geomorphology_250k_gcs_ngdr.shp"
-    mineral_path = "exploration_data_gis_view.shp"
-    
     try:
+        # Use helper function to get correct file paths
+        geomorph_path = get_file_path("datasets/multi_layer_geological_map_of_karnataka_and_andhra_pradesh_25k_scale_v1/25K/lithology_25k_ngdr_20250224140917945/lithology_25k_ngdr.shp")
+        mineral_path = get_file_path("datasets/multi_layer_geological_map_of_karnataka_and_andhra_pradesh_25k_scale_v1/25K/mineralization_25k_ngdr_20250224141143411/mineralization_25k_ngdr_20250224141143411.shp")
+        
+        # Debugging information
+        with st.expander("Debug Information"):
+            st.write(f"Loading geomorphology from: {geomorph_path}")
+            st.write(f"Loading minerals from: {mineral_path}")
+            st.write(f"File exists (geomorph): {os.path.exists(geomorph_path)}")
+            st.write(f"File exists (mineral): {os.path.exists(mineral_path)}")
+        
         # Read the files
         geomorph_gdf = gpd.read_file(geomorph_path)
         mineral_gdf = gpd.read_file(mineral_path)
@@ -143,6 +122,9 @@ def load_data():
         return geomorph_gdf, mineral_gdf
     except Exception as e:
         st.error(f"Error loading data: {e}")
+        if "fiona" in str(e) and "path" in str(e):
+            st.error("Fiona path error: Make sure you have all required packages installed.")
+            st.code("pip install geopandas fiona pyproj shapely rtree")
         return None, None
 
 # Load the data only once - use session state
@@ -313,386 +295,9 @@ with map_col:
         # Place legend to the right of the plot
         ax.legend(handles=handles, loc='center left', bbox_to_anchor=(1, 0.5), fontsize=8)
         ax.set_title('Geomorphology Regions')
-        ax.set_axis_off()
         
-        # Add a grid
-        ax.grid(True, linestyle='--', alpha=0.5)
-        
-        st.pyplot(fig)
-    
-    elif both_selected:
-        # Create a map showing the selected region and mineral distribution
-        fig, ax = plt.subplots(figsize=(10, 8))
-        
-        # Plot all regions with a light gray color
-        geomorph_gdf.plot(
-            ax=ax,
-            color='lightgray',
-            edgecolor='darkgray',
-            linewidth=0.5
-        )
-        
-        # Highlight the selected region
-        col_name = f"count_{selected_mineral.replace(' ', '_').replace(',', '_').replace('-', '_')}"
-        if col_name in geom_plot.columns and geom_plot[col_name].sum() > 0:
-            # If the mineral is present in the region, color it with the mineral's color
-            geom_plot.plot(
-                ax=ax,
-                color=commodity_colors.get(selected_mineral, '#3388ff'),
-                edgecolor='black',
-                linewidth=1
-            )
-        else:
-            # If the mineral is not present, use a different color
-            geom_plot.plot(
-                ax=ax,
-                color='#ff3333',  # Red color for regions without the mineral
-                edgecolor='black',
-                linewidth=1
-            )
-        
-        # Plot mineral locations
-        for idx, row in min_plot.iterrows():
-            try:
-                ax.plot(
-                    row.geometry.centroid.x,
-                    row.geometry.centroid.y,
-                    marker='o',
-                    color=commodity_colors.get(selected_mineral, '#999999'),
-                    markersize=8,
-                    markeredgecolor='white',
-                    markeredgewidth=1
-                )
-            except:
-                continue
-        
-        # Create a custom legend
-        handles = [
-            mpatches.Patch(color=commodity_colors.get(selected_mineral, '#3388ff'), 
-                          label=f'Region with {selected_mineral}'),
-            mpatches.Patch(color='#ff3333', label='Region without mineral'),
-            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=commodity_colors.get(selected_mineral, '#999999'),
-                      markersize=8, label=f'{selected_mineral} occurrence')
-        ]
-        
-        # Place legend to the right of the plot
-        ax.legend(handles=handles, loc='center left', bbox_to_anchor=(1, 0.5))
-        ax.set_title(f'{selected_mineral} in {selected_geomorph}')
-        ax.set_axis_off()
-        
-        # Add a grid
-        ax.grid(True, linestyle='--', alpha=0.5)
+        # Remove axis ticks and labels
+        ax.set_xticks([])
+        ax.set_yticks([])
         
         st.pyplot(fig)
-    
-    elif only_geomorph:
-        # Create a map highlighting the selected region
-        fig, ax = plt.subplots(figsize=(10, 8))
-        
-        # Plot all regions with a light gray color
-        geomorph_gdf.plot(
-            ax=ax,
-            color='lightgray',
-            edgecolor='darkgray',
-            linewidth=0.5
-        )
-        
-        # Highlight the selected region with a distinctive color
-        region_color = geomorph_colors.get(selected_geomorph, '#3388ff')
-        geom_plot.plot(
-            ax=ax,
-            color=region_color,
-            edgecolor='black',
-            linewidth=1
-        )
-        
-        # Create a custom legend
-        handles = [
-            mpatches.Patch(color=region_color, label=selected_geomorph),
-            mpatches.Patch(color='lightgray', label='Other regions')
-        ]
-        
-        # Place legend to the right of the plot
-        ax.legend(handles=handles, loc='center left', bbox_to_anchor=(1, 0.5))
-        ax.set_title(f'Region: {selected_geomorph}')
-        ax.set_axis_off()
-        
-        # Add a grid
-        ax.grid(True, linestyle='--', alpha=0.5)
-        
-        st.pyplot(fig)
-    
-    elif only_mineral:
-        # Create a map showing all regions with the selected mineral
-        fig, ax = plt.subplots(figsize=(10, 8))
-        
-        # Plot all regions with a light gray color
-        geomorph_gdf.plot(
-            ax=ax,
-            color='lightgray',
-            edgecolor='darkgray',
-            linewidth=0.5
-        )
-        
-        # Find regions that have this mineral
-        col_name = f"count_{selected_mineral.replace(' ', '_').replace(',', '_').replace('-', '_')}"
-        if col_name in geomorph_gdf.columns:
-            regions_with_mineral = geomorph_gdf[geomorph_gdf[col_name] > 0]
-            
-            if not regions_with_mineral.empty:
-                # Color regions that have this mineral
-                regions_with_mineral.plot(
-                    ax=ax,
-                    color=commodity_colors.get(selected_mineral, '#3388ff'),
-                    edgecolor='black',
-                    linewidth=0.5
-                )
-        
-        # Plot mineral locations
-        for idx, row in min_plot.iterrows():
-            try:
-                ax.plot(
-                    row.geometry.centroid.x,
-                    row.geometry.centroid.y,
-                    marker='o',
-                    color=commodity_colors.get(selected_mineral, '#999999'),
-                    markersize=8,
-                    markeredgecolor='white',
-                    markeredgewidth=1
-                )
-            except:
-                continue
-        
-        # Create a custom legend
-        handles = [
-            mpatches.Patch(color=commodity_colors.get(selected_mineral, '#3388ff'), 
-                          label=f'Regions with {selected_mineral}'),
-            mpatches.Patch(color='lightgray', label='Regions without mineral'),
-            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=commodity_colors.get(selected_mineral, '#999999'),
-                      markersize=8, label=f'{selected_mineral} occurrence')
-        ]
-        
-        # Place legend to the right of the plot
-        ax.legend(handles=handles, loc='center left', bbox_to_anchor=(1, 0.5))
-        ax.set_title(f'Distribution of {selected_mineral}')
-        ax.set_axis_off()
-        
-        # Add a grid
-        ax.grid(True, linestyle='--', alpha=0.5)
-        
-        st.pyplot(fig)
-
-with plot_col:
-    # Show charts and analyses based on the selection
-    if both_selected:
-        # Show potential and analysis for the specific mineral in the region
-        st.subheader(f"{selected_mineral} Analysis")
-        
-        # Check if the mineral is present in the region
-        if mineral_count > 0:
-            # Create pie chart showing this mineral vs others in the region
-            fig, ax = plt.subplots(figsize=(6, 6))
-            other_minerals = total_minerals - mineral_count
-            labels = [selected_mineral, 'Other Minerals']
-            sizes = [mineral_count, other_minerals]
-            colors = [commodity_colors.get(selected_mineral, '#999999'), '#CCCCCC']
-            explode = (0.1, 0)  # explode the 1st slice (selected mineral)
-            
-            ax.pie(sizes, explode=explode, labels=labels, colors=colors, 
-                   autopct='%1.1f%%', startangle=90, shadow=True)
-            ax.axis('equal')  # Equal aspect ratio ensures the pie chart is circular
-            ax.set_title(f'Proportion of {selected_mineral} in {selected_geomorph}')
-            st.pyplot(fig)
-            
-            # Show some statistics and interpretation
-            st.markdown(f"### Key Findings")
-            st.markdown(f"- {selected_mineral} makes up **{mineral_percentage:.1f}%** of all minerals in this region")
-            st.markdown(f"- There are **{int(mineral_count)}** occurrences of {selected_mineral} in this region")
-            
-            # Calculate density
-            region_area = geom_plot['area_sqkm'].sum()
-            if region_area > 0:
-                density = mineral_count / region_area
-                st.markdown(f"- Density of {selected_mineral}: **{density:.4f}** occurrences per km²")
-            
-            # Check if this is one of the top regions for this mineral
-            if col_name in geomorph_gdf.columns:
-                # Count occurrences by region
-                region_counts = geomorph_gdf.groupby('legend_sho')[col_name].sum()
-                region_counts = region_counts[region_counts > 0].sort_values(ascending=False)
-                
-                if selected_geomorph in region_counts.index:
-                    rank = list(region_counts.index).index(selected_geomorph) + 1
-                    total_regions = len(region_counts)
-                    st.markdown(f"- This region ranks **#{rank}** out of {total_regions} regions for {selected_mineral} occurrences")
-            
-            # Provide an interpretation
-            if mineral_percentage > 50:
-                st.markdown(f"**Interpretation:** {selected_geomorph} is a **dominant region** for {selected_mineral}, with over half of all minerals in this region being {selected_mineral}.")
-            elif mineral_percentage > 25:
-                st.markdown(f"**Interpretation:** {selected_geomorph} is a **significant region** for {selected_mineral}, with a substantial proportion of minerals being {selected_mineral}.")
-            else:
-                st.markdown(f"**Interpretation:** {selected_geomorph} contains {selected_mineral}, but it's not a dominant mineral in this region.")
-        else:
-            st.warning(f"No {selected_mineral} was found in {selected_geomorph}.")
-            st.markdown("### Regions with this mineral:")
-            
-            # Show top regions for this mineral
-            if col_name in geomorph_gdf.columns:
-                region_counts = geomorph_gdf.groupby('legend_sho')[col_name].sum()
-                region_counts = region_counts[region_counts > 0].sort_values(ascending=False).head(5)
-                
-                if not region_counts.empty:
-                    fig, ax = plt.subplots(figsize=(6, 4))
-                    region_counts.plot.barh(ax=ax, color=commodity_colors.get(selected_mineral, '#999999'))
-                    ax.set_xlabel('Number of Occurrences')
-                    ax.set_title(f'Top 5 Regions for {selected_mineral}')
-                    st.pyplot(fig)
-    
-    elif only_geomorph:
-        # Show general mineral composition in this region
-        st.subheader(f"Minerals in {selected_geomorph}")
-        
-        # Get all mineral columns
-        mineral_cols = [col for col in geom_plot.columns if col.startswith('count_')]
-        
-        # Create a dictionary of mineral counts
-        mineral_counts = {}
-        for col in mineral_cols:
-            mineral_name = col.replace('count_', '').replace('_', ' ')
-            count = geom_plot[col].sum()
-            if count > 0:
-                mineral_counts[mineral_name] = count
-        
-        if mineral_counts:
-            # Sort by count
-            sorted_minerals = sorted(mineral_counts.items(), key=lambda x: x[1], reverse=True)
-            
-            # Create a pie chart of top minerals
-            fig, ax = plt.subplots(figsize=(6, 6))
-            
-            labels = []
-            sizes = []
-            colors = []
-            total = sum(count for _, count in sorted_minerals)
-            other_count = 0
-            
-            # Get top 6 minerals, group others
-            for i, (mineral, count) in enumerate(sorted_minerals):
-                if i < 6:
-                    labels.append(mineral)
-                    sizes.append(count)
-                    colors.append(commodity_colors.get(mineral, '#999999'))
-                else:
-                    other_count += count
-            
-            if other_count > 0:
-                labels.append('Other Minerals')
-                sizes.append(other_count)
-                colors.append('#CCCCCC')
-            
-            ax.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90, shadow=True)
-            ax.axis('equal')
-            ax.set_title(f'Mineral Composition in {selected_geomorph}')
-            st.pyplot(fig)
-            
-            # Show top minerals in a list
-            st.markdown("### Top Minerals in this Region:")
-            for mineral, count in sorted_minerals[:8]:  # Show top 8
-                percentage = (count / total) * 100
-                st.markdown(f"- **{mineral}**: {int(count)} occurrences ({percentage:.1f}%)")
-                
-            # Show total minerals and density
-            total_minerals = geom_plot['mineral_count'].sum()
-            region_area = geom_plot['area_sqkm'].sum()
-            if region_area > 0:
-                density = total_minerals / region_area
-                st.markdown(f"**Total Minerals**: {int(total_minerals)}")
-                st.markdown(f"**Mineral Density**: {density:.4f} per km²")
-        else:
-            st.warning(f"No minerals found in {selected_geomorph}.")
-    
-    elif only_mineral:
-        # Show distribution of this mineral across regions
-        st.subheader(f"Distribution of {selected_mineral}")
-        
-        col_name = f"count_{selected_mineral.replace(' ', '_').replace(',', '_').replace('-', '_')}"
-        if col_name in geomorph_gdf.columns:
-            # Count occurrences by region
-            region_counts = geomorph_gdf.groupby('legend_sho')[col_name].sum()
-            region_counts = region_counts[region_counts > 0].sort_values(ascending=False)
-            
-            if not region_counts.empty:
-                # Create bar chart for top regions
-                fig, ax = plt.subplots(figsize=(6, 6))
-                region_counts.head(10).plot.barh(ax=ax, color=commodity_colors.get(selected_mineral, '#999999'))
-                ax.set_xlabel('Number of Occurrences')
-                ax.set_title(f'Top 10 Regions for {selected_mineral}')
-                st.pyplot(fig)
-                
-                # Show percentage distribution
-                st.markdown("### Regional Distribution:")
-                total = region_counts.sum()
-                for region, count in region_counts.head(8).items():
-                    percentage = (count / total) * 100
-                    st.markdown(f"- **{region}**: {int(count)} occurrences ({percentage:.1f}%)")
-                
-                # Total occurrences
-                st.markdown(f"**Total {selected_mineral} Occurrences**: {int(total)}")
-                
-                # Mineral concentration statistics
-                concentrations = []
-                for region in region_counts.index:
-                    region_minerals = geomorph_gdf[geomorph_gdf['legend_sho'] == region]['mineral_count'].sum()
-                    if region_minerals > 0:
-                        mineral_count = region_counts[region]
-                        concentration = (mineral_count / region_minerals) * 100
-                        concentrations.append((region, concentration))
-                
-                if concentrations:
-                    st.markdown("### Highest Concentration Regions:")
-                    concentrations.sort(key=lambda x: x[1], reverse=True)
-                    for region, concentration in concentrations[:5]:
-                        st.markdown(f"- **{region}**: {concentration:.1f}% of minerals are {selected_mineral}")
-            else:
-                st.warning(f"No occurrences of {selected_mineral} found.")
-        else:
-            st.warning(f"No data available for {selected_mineral}.")
-    
-    else:
-        # Show overall mineral distribution
-        st.subheader("Overall Mineral Distribution")
-        
-        # Count by commodity
-        mineral_counts = mineral_gdf['commodity'].value_counts().head(10)
-        
-        if not mineral_counts.empty:
-            # Create pie chart
-            fig, ax = plt.subplots(figsize=(6, 6))
-            
-            # Get colors for minerals
-            colors = [commodity_colors.get(mineral, '#999999') for mineral in mineral_counts.index]
-            
-            mineral_counts.plot.pie(ax=ax, colors=colors, autopct='%1.1f%%', shadow=True)
-            ax.set_ylabel('')  # Remove "commodity" label
-            ax.set_title('Overall Mineral Distribution')
-            st.pyplot(fig)
-            
-            # Show counts in a list
-            st.markdown("### Top Minerals:")
-            total = mineral_counts.sum()
-            for mineral, count in mineral_counts.items():
-                percentage = (count / total) * 100
-                st.markdown(f"- **{mineral}**: {count} occurrences ({percentage:.1f}%)")
-            
-            # Show total mineral count
-            st.markdown(f"**Total Minerals**: {int(total)}")
-        else:
-            st.warning("No mineral data available.")
-
-# Add footer
-st.markdown("""
-<div style="background-color: #f8f9fa; padding: 5px; border-radius: 5px; margin-top: 10px; font-size: 11px; color: #666; text-align: center;">
-    This dashboard visualizes the relationship between geomorphological regions and mineral occurrences.
-</div>
-""", unsafe_allow_html=True)
